@@ -1,8 +1,6 @@
 # --- SpacetimeDB & Rust ---
-/server/target
-/server/.spacetime
+/spacetimedb/target
 **/*.rs.bk
-Cargo.lock
 
 # --- Frontend / Node ---
 node_modules/
