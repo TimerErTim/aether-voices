@@ -10,4 +10,9 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {};
+export default __t.row({
+  messageId: __t.u64().primaryKey().name("message_id"),
+  threadId: __t.u64().name("thread_id"),
+  stepIndex: __t.u32().name("step_index"),
+  text: __t.string(),
+});

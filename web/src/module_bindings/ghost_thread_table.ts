@@ -10,8 +10,8 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export const Person = __t.object("Person", {
-  name: __t.string(),
+export default __t.row({
+  threadId: __t.u64().primaryKey().name("thread_id"),
+  isComplete: __t.bool().name("is_complete"),
+  totalSteps: __t.u32().name("total_steps"),
 });
-export type Person = __Infer<typeof Person>;
-

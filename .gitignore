@@ -4,6 +4,9 @@
 
 # --- Frontend / Node ---
 node_modules/
+web/.next/
+web/out/
+web/tsconfig.tsbuildinfo
 dist/
 dist-ssr/
 *.local

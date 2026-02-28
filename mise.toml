@@ -1,2 +1,42 @@
 [tools]
 "cargo:wasm-opt" = "latest"
+node = "lts"
+rust = "stable"
+
+[tasks."check:web"]
+description = "Run TypeScript type/compile checks"
+dir = "{{ config_root }}/web"
+depends = ["generate:spacetimedb_bindings"]
+run = "npm run test:ts"
+
+[tasks."check:spacetimedb"]
+description = "Run Rust type/compile checks"
+dir = "{{ config_root }}/spacetimedb"
+run = "cargo clippy"
+
+[tasks.check]
+depends = ["check:web", "check:spacetimedb"]
+
+[tasks."build:web"]
+description = "Build frontend"
+dir = "{{ config_root }}/web"
+depends = ["generate:spacetimedb_bindings"]
+run = "npm run build"
+
+[tasks."build:spacetimedb"]
+description = "Build SpacetimeDB module"
+dir = "{{ config_root }}/spacetimedb"
+run = "spacetime build"
+
+[tasks."generate:spacetimedb_bindings"]
+description = "Generate SpacetimeDB bindings"
+run = "spacetime generate --lang ts --out-dir web/src/module_bindings"
+
+[tasks.build]
+description = "Build SpacetimeDB module and frontend"
+depends = ["build:spacetimedb", "build:web"]
+run = "spacetime build"
+
+[tasks."publish:spacetimedb"]
+description = "Publish SpacetimeDB module"
+run = "spacetime publish"
