@@ -1,33 +1,48 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSpacetimeDB } from "@/context/SpacetimeDBContext";
+import { useState, useEffect, useRef } from "react";
+import { useTable, useSpacetimeDB } from "spacetimedb/react";
+import { tables } from "@/module_bindings";
+
+type Toast = { id: string; type: "final" | "cancelled"; text: string };
 
 export function EventToasts() {
-  const { state, identity } = useSpacetimeDB();
-  const [finalBreathSeen, setFinalBreathSeen] = useState<Set<bigint>>(new Set());
-  const [cancelledSeen, setCancelledSeen] = useState<Set<bigint>>(new Set());
-  const [toasts, setToasts] = useState<Array<{ id: string; type: "final" | "cancelled"; text: string }>>([]);
+  const [finalBreathRows] = useTable(tables.final_breath);
+  const [ritualCancelledRows] = useTable(tables.ritual_cancelled);
+  const { identity } = useSpacetimeDB();
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const seenFinalRef = useRef<Set<bigint>>(new Set());
+  const seenCancelledRef = useRef<Set<bigint>>(new Set());
 
   useEffect(() => {
-    for (const ev of state.finalBreathEvents) {
-      if (finalBreathSeen.has(ev.id)) continue;
-      setFinalBreathSeen((s) => new Set(s).add(ev.id));
-      setToasts((t) => [...t, { id: `fb-${ev.id}`, type: "final", text: ev.finalWords }]);
-    }
-  }, [state.finalBreathEvents, finalBreathSeen]);
-
-  useEffect(() => {
-    for (const ev of state.ritualCancelledEvents) {
-      if (cancelledSeen.has(ev.id)) continue;
-      setCancelledSeen((s) => new Set(s).add(ev.id));
-      const isMe = identity && ev.userId.toHexString() === identity;
+    for (const row of finalBreathRows) {
+      if (seenFinalRef.current.has(row.id)) continue;
+      seenFinalRef.current.add(row.id);
       setToasts((t) => [
         ...t,
-        { id: `rc-${ev.id}`, type: "cancelled", text: isMe ? "Ritual failed — link severed." : "A ritual failed elsewhere." },
+        { id: `fb-${row.id}`, type: "final", text: row.finalWords },
       ]);
     }
-  }, [state.ritualCancelledEvents, cancelledSeen, identity]);
+  }, [finalBreathRows]);
+
+  useEffect(() => {
+    for (const row of ritualCancelledRows) {
+      if (seenCancelledRef.current.has(row.id)) continue;
+      seenCancelledRef.current.add(row.id);
+      const isMe =
+        identity && row.userId.toHexString() === identity.toHexString();
+      setToasts((t) => [
+        ...t,
+        {
+          id: `rc-${row.id}`,
+          type: "cancelled",
+          text: isMe
+            ? "Ritual failed — link severed."
+            : "A ritual failed elsewhere.",
+        },
+      ]);
+    }
+  }, [ritualCancelledRows, identity]);
 
   useEffect(() => {
     if (toasts.length === 0) return;
@@ -36,27 +51,15 @@ export function EventToasts() {
   }, [toasts]);
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 16,
-        right: 16,
-        zIndex: 1000,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        maxWidth: 360,
-      }}
-    >
+    <div className="fixed top-4 right-4 z-[1000] flex flex-col gap-2 max-w-[360px]">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          style={{
-            padding: 12,
-            background: toast.type === "final" ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-            border: `1px solid ${toast.type === "final" ? "var(--fg)" : "#ef4444"}`,
-            color: "var(--fg)",
-          }}
+          className={`px-3 py-2 rounded border font-mono text-sm ${
+            toast.type === "final"
+              ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-400"
+              : "bg-red-500/15 border-red-500/50 text-red-400"
+          }`}
         >
           {toast.type === "final" ? "Final breath: " : ""}&ldquo;{toast.text}&rdquo;
         </div>

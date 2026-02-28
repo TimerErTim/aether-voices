@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { useSpacetimeDB } from "@/context/SpacetimeDBContext";
+import { useTable, useSpacetimeDB, useReducer } from "spacetimedb/react";
+import { tables, reducers } from "@/module_bindings";
 
 const TILE = 48;
 const PROXIMITY = 120;
@@ -9,11 +10,18 @@ const CAMERA_SPEED = 4;
 
 export function MapView() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { ready, state, startRitual, error } = useSpacetimeDB();
+  const [gravestones, isGravestonesReady] = useTable(tables.gravestone);
+  const [activeRituals] = useTable(tables.active_ritual);
+  const { isActive, identity, connectionError } = useSpacetimeDB();
+  const startRitualReducer = useReducer(reducers.startRitual);
   const [wisp, setWisp] = useState({ x: 400, y: 300 });
   const [keys, setKeys] = useState({ w: false, a: false, s: false, d: false });
   const [startButtonError, setStartButtonError] = useState<string | null>(null);
   const [proximityEcho, setProximityEcho] = useState<string | null>(null);
+
+  const myRitual = identity
+    ? activeRituals.find((r) => r.userId.toHexString() === identity.toHexString())
+    : null;
 
   const moveWisp = useCallback(() => {
     setWisp((prev) => ({
@@ -29,7 +37,7 @@ export function MapView() {
 
   useEffect(() => {
     let near: string | null = null;
-    for (const g of state.gravestones) {
+    for (const g of gravestones) {
       const dx = g.x * TILE - wisp.x;
       const dy = g.y * TILE - wisp.y;
       if (Math.sqrt(dx * dx + dy * dy) < PROXIMITY) {
@@ -38,7 +46,7 @@ export function MapView() {
       }
     }
     setProximityEcho(near);
-  }, [state.gravestones, wisp]);
+  }, [gravestones, wisp]);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -53,7 +61,7 @@ export function MapView() {
     ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = "#22c55e";
     ctx.font = "14px monospace";
-    for (const g of state.gravestones) {
+    for (const g of gravestones) {
       const sx = g.x * TILE - camX;
       const sy = g.y * TILE - camY;
       if (sx >= -20 && sy >= -20 && sx <= width + 20 && sy <= height + 20) {
@@ -64,7 +72,7 @@ export function MapView() {
     ctx.beginPath();
     ctx.arc(width / 2, height / 2, 6, 0, Math.PI * 2);
     ctx.fill();
-  }, [state.gravestones, wisp]);
+  }, [gravestones, wisp]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -92,35 +100,42 @@ export function MapView() {
   const handleStartRitual = async () => {
     setStartButtonError(null);
     try {
-      await startRitual(wisp.x / TILE, wisp.y / TILE);
+      await startRitualReducer({ x: wisp.x / TILE, y: wisp.y / TILE });
     } catch (e) {
-      setStartButtonError(e instanceof Error ? e.message : "Failed");
+      setStartButtonError(e instanceof Error ? e.message : "Failed to start ritual");
     }
   };
 
-  const myRitual = state.activeRituals[0];
-
   return (
-    <section style={{ padding: 8, flex: 1, display: "flex", flexDirection: "column", maxHeight: "50vh" }}>
-      {error && <p style={{ color: "#ef4444" }}>{error}</p>}
-      {!ready && <p>Connecting...</p>}
-      {ready && (
+    <section className="p-4 flex-1 flex flex-col max-h-[50vh]">
+      {connectionError && (
+        <p className="text-red-500 text-sm mb-2">{connectionError.message}</p>
+      )}
+      {!isActive && <p className="text-amber-400/90 text-sm">Connecting…</p>}
+      {isActive && isGravestonesReady && (
         <>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-            <button type="button" onClick={handleStartRitual} disabled={!!myRitual}>
+          <div className="flex gap-3 items-center mb-3 flex-wrap">
+            <button
+              type="button"
+              onClick={handleStartRitual}
+              disabled={!!myRitual}
+              className="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/50 rounded hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed font-mono text-sm"
+            >
               Start séance
             </button>
-            {startButtonError && <span style={{ color: "#ef4444" }}>{startButtonError}</span>}
-            <span style={{ color: "var(--accent)" }}>WASD to move</span>
+            {startButtonError && (
+              <span className="text-red-500 text-sm">{startButtonError}</span>
+            )}
+            <span className="text-amber-400/90 text-sm">WASD to move</span>
           </div>
           <canvas
             ref={canvasRef}
             width={800}
             height={400}
-            style={{ border: "1px solid var(--fg)", background: "#0a0a0a", width: "100%", maxWidth: 800 }}
+            className="w-full max-w-[800px] border border-emerald-500/50 rounded bg-[#0a0a0a]"
           />
           {proximityEcho && (
-            <div style={{ marginTop: 8, padding: 8, background: "rgba(34,197,94,0.1)", border: "1px solid var(--fg)", color: "var(--accent)", fontStyle: "italic" }}>
+            <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/50 rounded text-amber-400 italic text-sm">
               Ghostly echo: &ldquo;{proximityEcho}&rdquo;
             </div>
           )}

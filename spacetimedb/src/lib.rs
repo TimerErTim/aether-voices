@@ -1,7 +1,7 @@
 use rand::Rng;
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table, Timestamp};
 
-const TOTAL_STEPS: u32 = 5;
+const TOTAL_STEPS: u32 = 20;
 const PASSIVE_DECAY: i32 = 17;
 const MIASMA_PENALTY: i32 = -20;
 const RELEVANCE_BONUS: i32 = 10;
