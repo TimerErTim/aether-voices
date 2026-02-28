@@ -1,4 +1,5 @@
 {
   "module-path": "./spacetimedb",
+  "database": "aether-voices-01",
   "server": "maincloud"
 }

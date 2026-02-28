@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: false
+---
+
 # SpacetimeDB Rules (All Languages)
 
 ## Migrating from 1.0 to 2.0?
