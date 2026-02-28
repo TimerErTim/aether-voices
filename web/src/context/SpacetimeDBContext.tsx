@@ -55,7 +55,7 @@ export function SpacetimeDBProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     const uri = process.env.NEXT_PUBLIC_SPACETIMEDB_URI ?? "http://localhost:3000";
-    const moduleName = process.env.NEXT_PUBLIC_SPACETIMEDB_MODULE ?? "aether_voices";
+    const moduleName = process.env.NEXT_PUBLIC_SPACETIMEDB_MODULE ?? "aether-voices-01";
 
     const conn = DbConnection.builder()
       .withUri(uri)

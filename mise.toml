@@ -40,3 +40,16 @@ run = "spacetime build"
 [tasks."publish:spacetimedb"]
 description = "Publish SpacetimeDB module"
 run = "spacetime publish"
+
+[tasks."dev:web"]
+description = "Start frontend development server"
+dir = "{{ config_root }}/web"
+run = "npm run dev"
+
+[tasks."dev:spacetimedb"]
+description = "Start SpacetimeDB development server"
+run = "spacetime dev --yes"
+
+[tasks."dev"]
+description = "Start development server"
+depends = ["dev:web", "dev:spacetimedb"]
