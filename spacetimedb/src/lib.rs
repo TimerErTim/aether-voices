@@ -149,15 +149,6 @@ fn miasma_penalty(text: &str) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
-// Logging helpers
-// ---------------------------------------------------------------------------
-
-/// Short identity for logs (e.g. "a1b2c3d4").
-fn log_identity(id: &Identity) -> String {
-    id.to_hex().to_string().chars().take(8).collect::<String>()
-}
-
-// ---------------------------------------------------------------------------
 // Reducers
 // ---------------------------------------------------------------------------
 
@@ -208,30 +199,25 @@ pub fn init(ctx: &ReducerContext) {
         finished_on: ctx.timestamp,
     });
 
-    log::info!(
-        "[init] Seed session created: {} ghost steps, initiator={}",
-        seed_messages.len(),
-        log_identity(&ctx.sender())
-    );
+    log::info!("Init: seed session {} steps", seed_messages.len());
 }
 
 #[reducer(client_connected)]
 pub fn identity_connected(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("[connect] Client connected identity={}", log_identity(&ctx.sender()));
+    log::info!("Client connected");
     start_new_session(ctx)?;
     Ok(())
 }
 
 #[reducer(client_disconnected)]
 pub fn identity_disconnected(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("[disconnect] Client disconnected identity={}", log_identity(&ctx.sender()));
+    log::info!("Client disconnected");
     cancel_active_sessions_user(ctx)?;
     Ok(())
 }
 
 #[reducer]
 pub fn start_ghost_writing(ctx: &ReducerContext, row: StartGhostWriting) -> Result<(), String> {
-    log::debug!("[ghost_write] Scheduled job started seance_id={}", row.seance_id);
     if ctx.connection_id().is_some() {
         return Err("Can run only scheduled reducer".into());
     }
@@ -247,7 +233,6 @@ pub fn start_ghost_writing(ctx: &ReducerContext, row: StartGhostWriting) -> Resu
     }
     active_session.state = SessionState::GhostWriting;
     ctx.db.active_session().seance_id().update(active_session);
-    log::info!("[ghost_write] seance_id={} state=GhostWriting (ghost typing)", row.seance_id);
     ctx.db.send_ghost_message().insert(SendGhostMessage {
         seance_id: row.seance_id,
         scheduled_at: ScheduleAt::Time(
@@ -259,9 +244,7 @@ pub fn start_ghost_writing(ctx: &ReducerContext, row: StartGhostWriting) -> Resu
 
 #[reducer]
 pub fn send_ghost_message_red(ctx: &ReducerContext, row: SendGhostMessage) -> Result<(), String> {
-    log::debug!("[ghost_send] Scheduled job started seance_id={}", row.seance_id);
     if ctx.connection_id().is_some() {
-        log::error!("[ghost_send] Rejected: must be run by scheduler only");
         return Err("Can run only scheduled reducer".into());
     }
     let mut active_session = ctx
@@ -285,37 +268,16 @@ pub fn send_ghost_message_red(ctx: &ReducerContext, row: SendGhostMessage) -> Re
     let next_ghost_message = our_ghost_messages
         .get(next_step as usize)
         .ok_or("Next ghost message not found")?;
-    let ghost_text = ctx
-        .db
-        .message()
-        .message_id()
-        .find(next_ghost_message)
-        .map(|m| m.text.clone())
-        .unwrap_or_else(|| "?".to_string());
     active_session.ghost_messages.push(*next_ghost_message);
     active_session.current_steps = next_step;
     ctx.db.active_session().seance_id().update(active_session);
-    log::info!(
-        "[ghost_send] seance_id={} step={}/{} text=\"{}\"",
-        row.seance_id,
-        next_step,
-        reference_session.total_steps,
-        ghost_text
-    );
+    log::info!("Ghost message seance {} step {}", row.seance_id, next_step);
     Ok(())
 }
 
 #[reducer]
 pub fn cancel_active_sessions_user(ctx: &ReducerContext) -> Result<(), String> {
-    let count = ctx.db.active_session().by_user().filter(&ctx.sender()).count();
     ctx.db.active_session().by_user().delete(ctx.sender());
-    if count > 0 {
-        log::info!(
-            "[cancel] Dropped {} active session(s) identity={}",
-            count,
-            log_identity(&ctx.sender())
-        );
-    }
     Ok(())
 }
 
@@ -330,16 +292,8 @@ pub fn start_new_session(ctx: &ReducerContext) -> Result<(), String> {
         .iter()
         .filter(|s| s.initiator != ctx.sender())
         .collect::<Vec<_>>();
-    log::debug!(
-        "[session] {} reference session(s) available for identity={}",
-        reference_sessions.len(),
-        log_identity(&ctx.sender())
-    );
     if reference_sessions.is_empty() {
-        log::error!(
-            "[session] No reference sessions for identity={} (need at least one other finished session)",
-            log_identity(&ctx.sender())
-        );
+        log::info!("Ritual start failed: no reference sessions");
         return Err("No available reference sessions".to_string());
     }
     let idx = ctx.rng().gen_range(0..reference_sessions.len());
@@ -356,12 +310,7 @@ pub fn start_new_session(ctx: &ReducerContext) -> Result<(), String> {
         state: SessionState::Idle,
         initiated_on: ctx.timestamp,
     });
-    log::info!(
-        "[session] Ritual started seance_id={} ancestor_seance_id={} identity={}",
-        new_session.seance_id,
-        reference_session.seance_id,
-        log_identity(&ctx.sender())
-    );
+    log::info!("Ritual started seance {}", new_session.seance_id);
 
     ctx.db.start_ghost_write().insert(StartGhostWriting {
         seance_id: new_session.seance_id,
@@ -375,11 +324,6 @@ pub fn submit_message(ctx: &ReducerContext, text: String, location: Iso3166Alpha
     if text.trim().is_empty() {
         return Err("Message cannot be empty".to_string());
     }
-    log::debug!(
-        "[submit] Incoming text_len={} identity={}",
-        text.len(),
-        log_identity(&ctx.sender())
-    );
     let mut session = ctx.db.active_session().by_user().filter(&ctx.sender()).next().ok_or("Active session not found")?;
     let reference_session = ctx
         .db
@@ -397,17 +341,10 @@ pub fn submit_message(ctx: &ReducerContext, text: String, location: Iso3166Alpha
     let new_message = ctx.db.message().insert(new_message);
 
     session.initiator_messages.push(new_message.message_id);
-    let msg_preview: String = text.chars().take(60).collect::<String>();
-    let msg_preview = if text.chars().count() > 60 {
-        format!("{}…", msg_preview)
-    } else {
-        msg_preview
-    };
-    log::info!("[submit] seance_id={} user message \"{}\"", session.seance_id, msg_preview);
 
     // Check if session is complete
     if session.current_steps + 1 >= reference_session.total_steps {
-        let new_finished_session = ctx.db.finished_session().insert(FinishedSession {
+        let _new_finished_session = ctx.db.finished_session().insert(FinishedSession {
             seance_id: 0,
             initiator: session.initiator,
             ghost_messages: session.ghost_messages,
@@ -417,11 +354,7 @@ pub fn submit_message(ctx: &ReducerContext, text: String, location: Iso3166Alpha
             finished_on: ctx.timestamp,
         });
         ctx.db.active_session().seance_id().delete(&session.seance_id);
-        log::info!(
-            "[submit] seance_id={} completed → finished_session_id={}",
-            session.seance_id,
-            new_finished_session.seance_id
-        );
+        log::info!("Session {} completed", session.seance_id);
         return Ok(())
     }
 
@@ -431,10 +364,6 @@ pub fn submit_message(ctx: &ReducerContext, text: String, location: Iso3166Alpha
         seance_id: session.seance_id,
         scheduled_at: ScheduleAt::Time(ctx.timestamp + Duration::from_secs(ctx.rng().gen_range(1..4))),
     });
-    log::debug!(
-        "[submit] seance_id={} state=Idle, next ghost write scheduled",
-        session.seance_id
-    );
     Ok(())
 }
 

@@ -1,12 +1,61 @@
 "use client";
 
 import { hasFlag } from "country-flag-icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTable, useReducer } from "spacetimedb/react";
 import { tables, reducers } from "@/module_bindings";
-import type { Message } from "@/module_bindings/types";
+import type { Iso3166Alpha2, Message } from "@/module_bindings/types";
 
 const FLAG_CDN_BASE = "https://purecatamphetamine.github.io/country-flag-icons/3x2";
+
+/** ISO 3166-1 alpha-2 "US" → reducer format { tag: "Us" }. */
+function alpha2ToLocationTag(alpha2: string): string {
+  const s = alpha2.toUpperCase().slice(0, 2);
+  if (s.length !== 2) return "Us";
+  return s[0] + s[1].toLowerCase();
+}
+
+/** Detect country code from browser: IP geolocation then locale fallback. */
+function useDetectedLocation(): { tag: string } | null {
+  const [location, setLocation] = useState<{ tag: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fromLocale = (): string => {
+      try {
+        const locale =
+          typeof navigator !== "undefined"
+            ? navigator.language || (navigator.languages && navigator.languages[0])
+            : "";
+        const region = locale.split("-")[1] || new Intl.Locale(locale).region || "";
+        return region.toUpperCase().slice(0, 2) || "US";
+      } catch {
+        return "US";
+      }
+    };
+
+    const apply = (alpha2: string) => {
+      if (cancelled) return;
+      const tag = alpha2ToLocationTag(alpha2);
+      setLocation({ tag });
+    };
+
+    fetch("https://ipapi.co/json/?fields=country_code", { signal: AbortSignal.timeout(3000) })
+      .then((r) => r.json())
+      .then((data) => {
+        const code = (data?.country_code ?? "").toUpperCase().slice(0, 2);
+        apply(code || fromLocale());
+      })
+      .catch(() => apply(fromLocale()));
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return location;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -132,6 +181,7 @@ export function RitualView() {
   const [sessionRows] = useTable(tables.user_active_session);
   const currentSession = sessionRows?.[0];
   const submitMessageReducer = useReducer(reducers.submitMessage);
+  const detectedLocation = useDetectedLocation();
 
   const [input, setInput] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -168,8 +218,9 @@ export function RitualView() {
     setSubmitError(null);
     const t = input.trim();
     if (!t || !canSend) return;
+    const location: Iso3166Alpha2 = (detectedLocation ?? { tag: "Us" }) as Iso3166Alpha2;
     try {
-      await submitMessageReducer({ text: t, location: { tag: "Us" } });
+      await submitMessageReducer({ text: t, location });
       setInput("");
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Failed to send");
